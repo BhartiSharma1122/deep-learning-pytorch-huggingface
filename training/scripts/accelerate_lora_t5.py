@@ -99,9 +99,9 @@ def training_function(args):
         pad_to_multiple_of=8
     )
     train_dataloader = DataLoader(
-        train_dataset, shuffle=True, collate_fn=data_collator, batch_size=args.train_batch_size, pin_memory=True
+        train_dataset, shuffle=True, collate_fn=data_collator, batch_size=args.train_batch_size
     )
-    eval_dataloader = DataLoader(eval_dataset, collate_fn=data_collator, batch_size=args.eval_batch_size, pin_memory=True)
+    eval_dataloader = DataLoader(eval_dataset, collate_fn=data_collator, batch_size=args.eval_batch_size)
 
     # optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
