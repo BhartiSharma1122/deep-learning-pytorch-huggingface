@@ -22,6 +22,16 @@ nltk.download("punkt", quiet=True)
 
 # Metric
 metric = evaluate.load("rouge")
+# evaluation generation args
+gen_kwargs = {
+      "early_stopping": True,
+      "length_penalty": 2.0,
+      "max_new_tokens": 50,
+      "min_length": 30,
+      "no_repeat_ngram_size": 3,
+      "num_beams": 4
+}
+
 
 def postprocess_text(preds, labels):
     preds = [pred.strip() for pred in preds]
@@ -138,8 +148,10 @@ def training_function(args):
         for _, batch in enumerate(eval_dataloader):
             with torch.no_grad():
                 generated_tokens = accelerator.unwrap_model(model).generate(
-                    batch["input_ids"],
+                    input_ids=batch["input_ids"],
                     attention_mask=batch["attention_mask"],
+                    synced_gpus=True,
+                    **gen_kwargs  
                 )
                 generated_tokens = accelerator.pad_across_processes(
                     generated_tokens, dim=1, pad_index=tokenizer.pad_token_id
