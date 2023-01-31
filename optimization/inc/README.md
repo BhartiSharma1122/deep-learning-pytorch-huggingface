@@ -8,6 +8,19 @@ The following example fine-tunes DistilBERT model of 90% sparsity on the sst-2 t
 
 ```bash
 python scripts/run_glue_no_trainer.py --task_name sst2 \
+ --model_name_or_path yoshitomo-matsubara/bert-base-uncased-sst2  \
+ --teacher_model_name_or_path yoshitomo-matsubara/bert-base-uncased-sst2  \
+ --batch_size 64 \
+ --do_eval \
+ --do_quantization \
+ --do_distillation \
+ --pad_to_max_length \
+ --num_train_epochs 3 \
+ --output_dir test_zero
+```
+
+```bash
+python scripts/run_glue_no_trainer.py --task_name sst2 \
  --model_name_or_path nreimers/MiniLMv2-L12-H384-distilled-from-RoBERTa-Large \
  --teacher_model_name_or_path howey/roberta-large-sst2 \
  --batch_size 32 \
@@ -18,6 +31,7 @@ python scripts/run_glue_no_trainer.py --task_name sst2 \
  --num_train_epochs 9 \
  --output_dir test_zero
 ```
+
 
 ## TODO
 

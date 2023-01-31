@@ -16,21 +16,17 @@
 import argparse
 import logging
 import shutil
-from neural_compressor.utils.logger import log
 import math
 import os
 import random
-import copy
 import datasets
 from datasets import load_dataset, load_metric
+# from neural_compressor import set_distillation_record
 import torch
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader
 import torch.distributed as dist
 from tqdm.auto import tqdm
 
-import numpy as np
-
-import transformers
 from transformers import (
     AdamW,
     AutoConfig,
@@ -213,13 +209,13 @@ def save_checkpoint(state, is_best, save_dir):
     """Saves checkpoint to disk"""
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    filename = save_dir + "checkpoint.pth"
+    filename = save_dir + "/checkpoint.pth"
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, save_dir + 'model_best.pth')
+        shutil.copyfile(filename, save_dir + '/model_best.pth')
 
 def train(args, model, train_dataloader, lr_scheduler, compression_manager, optimizer, eval_dataloader,
-          metric):      
+          metric):
     # Train!
     total_batch_size = args.batch_size * args.gradient_accumulation_steps
 
@@ -234,10 +230,7 @@ def train(args, model, train_dataloader, lr_scheduler, compression_manager, opti
     completed_steps = 0
     best_prec = 0
 
-    compression_manager.callbacks.on_train_begin()
-
     model_device = next(model.parameters()).device
-    print("model_device", model_device)
     for epoch in range(args.num_train_epochs):
         model.train()
         train_dataloader = tqdm(train_dataloader, desc="Training")
@@ -245,10 +238,7 @@ def train(args, model, train_dataloader, lr_scheduler, compression_manager, opti
         for step, batch in enumerate(train_dataloader):
             batch = move_input_to_device(batch, model_device)
             compression_manager.callbacks.on_step_begin(step)
-            print("tensor devices ",[x.device for x in batch.values()])
-            print("model device",model.model.device)
             outputs = model(**batch)
-            print("outputs", outputs)
             loss = compression_manager.callbacks.on_after_compute_loss(batch, outputs['logits'], outputs['loss'])
             loss = loss / args.gradient_accumulation_steps
             loss.backward()
@@ -340,16 +330,18 @@ def main():
     #
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, 
-                                              use_fast=not args.use_slow_tokenizer, 
+    config = AutoConfig.from_pretrained(args.model_name_or_path,
+                                        num_labels=num_labels,
+                                        finetuning_task=args.task_name,
+                                        use_auth_token=args.use_auth_token)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path,
+                                              use_fast=not args.use_slow_tokenizer,
                                               use_auth_token=args.use_auth_token)
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model_name_or_path,
         from_tf=bool(".ckpt" in args.model_name_or_path),
-        use_auth_token=args.use_auth_token,
-        num_labels=2,
+        config=config, use_auth_token=args.use_auth_token
     )
-    model.config.problem_type = "single_label_classification"
     if args.resume:
         try:
             model.load_state_dict(torch.load(args.resume))
@@ -419,9 +411,8 @@ def main():
         preprocess_function, batched=True, remove_columns=raw_datasets["train"].column_names
     )
 
-    train_dataset = processed_datasets["train"]
+    train_dataset = processed_datasets["train"].select(range(1000))
     eval_dataset = processed_datasets["validation_matched" if args.task_name == "mnli" else "validation"]
-
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_dataset)), 3):
         logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
@@ -480,16 +471,47 @@ def main():
         metric = load_metric("glue", args.task_name)
 
     combs = []
-    from neural_compressor.experimental import common, Distillation, Quantization
     if args.do_distillation:
-        from neural_compressor.config import DistillationConfig, KnowledgeDistillationLossConfig
-        # distillation_criterion = KnowledgeDistillationLossConfig(temperature=args.temperature,
-        #                                                          loss_types=args.loss_types,
-        #                                                          loss_weights=args.loss_weights)
-        distillation_criterion = KnowledgeDistillationLossConfig()
+        from neural_compressor.config import DistillationConfig, \
+                                             IntermediateLayersKnowledgeDistillationLossConfig
+        layer_mappings = [
+            [['bert.encoder.layer.0.output', ]],
+            [['bert.encoder.layer.0.attention', '1']],
+            [['bert.encoder.layer.1.output', ]],
+            [['bert.encoder.layer.1.attention', '1']],
+            [['bert.encoder.layer.2.output', ]],        
+            [['bert.encoder.layer.2.attention', '1']],      
+            [['bert.encoder.layer.3.output', ]],        
+            [['bert.encoder.layer.3.attention', '1']],      
+            [['bert.encoder.layer.4.output', ]],        
+            [['bert.encoder.layer.4.attention', '1']],      
+            [['bert.encoder.layer.5.output', ]],        
+            [['bert.encoder.layer.5.attention', '1']],      
+            [['bert.encoder.layer.6.output', ]],        
+            [['bert.encoder.layer.6.attention', '1']],      
+            [['bert.encoder.layer.7.output', ]],        
+            [['bert.encoder.layer.7.attention', '1']],      
+            [['bert.encoder.layer.8.output', ]],        
+            [['bert.encoder.layer.8.attention', '1']],      
+            [['bert.encoder.layer.9.output', ]],        
+            [['bert.encoder.layer.9.attention', '1']],
+            [['bert.encoder.layer.10.output', ]],
+            [['bert.encoder.layer.10.attention', '1']],
+            [['bert.encoder.layer.11.output', ]],
+            [['bert.encoder.layer.11.attention', '1']],
+            [['classifier', ]],
+        ]
+        loss_weights = [1, 1, 1, 1, 1,
+                        1, 1, 1, 1, 1,
+                        1, 1, 1, 1, 1,
+                        1, 1, 1, 1, 1,
+                        1, 1, 1, 1, 1]
+        distillation_criterion = IntermediateLayersKnowledgeDistillationLossConfig(
+            layer_mappings=layer_mappings,
+            loss_weights=loss_weights)
 
-        # teacher_config = AutoConfig.from_pretrained(args.teacher_model_name_or_path, \
-        #                     num_labels=num_labels, finetuning_task=args.task_name)
+        teacher_config = AutoConfig.from_pretrained(args.teacher_model_name_or_path, \
+                            num_labels=num_labels, finetuning_task=args.task_name)
         teacher_tokenizer = AutoTokenizer.from_pretrained(args.teacher_model_name_or_path, \
                             use_fast=not args.use_slow_tokenizer)
         assert teacher_tokenizer.vocab == tokenizer.vocab, \
@@ -497,18 +519,14 @@ def main():
         teacher_model = AutoModelForSequenceClassification.from_pretrained(
             args.teacher_model_name_or_path,
             from_tf=bool(".ckpt" in args.teacher_model_name_or_path),
+            config=teacher_config,
         )
-        teacher_model.config.problem_type = "single_label_classification"
-
         teacher_model.to(device)
-        logger.info(f"***** Teacher model device {teacher_model.device} *****")
-        logger.info(f"***** Student model device {model.device} *****")
         para_counter = lambda model:sum(p.numel() for p in model.parameters())
         logger.info("***** Number of teacher model parameters: {:.2f}M *****".format(\
                     para_counter(teacher_model)/10**6))
         logger.info("***** Number of student model parameters: {:.2f}M *****".format(\
                     para_counter(model)/10**6))
-
 
         # output attentions of models for intermediate layers distillation
         model.config.output_attentions = True
@@ -520,13 +538,6 @@ def main():
     if args.do_quantization:
         from neural_compressor import QuantizationAwareTrainingConfig
         q_conf = QuantizationAwareTrainingConfig()
-
-        from transformers.utils.fx import symbolic_trace
-        for input in eval_dataloader:
-            input_names = input.keys()
-            break
-        model = symbolic_trace(model, input_names=input_names)
-
         combs.append(q_conf)
 
     if len(combs) == 0:
@@ -534,45 +545,52 @@ def main():
 
     from neural_compressor.training import prepare_compression
     compression_manager = prepare_compression(model, combs)
+    compression_manager.callbacks.on_train_begin()
     model = compression_manager.model
     train(args, model, train_dataloader, lr_scheduler, compression_manager, optimizer, eval_dataloader,
           metric)
-
+    compression_manager.callbacks.on_train_end()
     model = model.model
 
-    if args.do_eval:
-        eval_dataloader = tqdm(eval_dataloader, desc="Evaluating")
-        model.eval()
-        model_device = next(model.parameters()).device
-        for step, batch in enumerate(eval_dataloader):
-            batch = move_input_to_device(batch, model_device)
-            outputs = model(**batch)
-            predictions = outputs['logits'].argmax(dim=-1)
-            metric.add_batch(
-                predictions=predictions,
-                references=batch["labels"],
-            )
+    from itertools import chain
+    from neural_compressor.experimental.export import torch_to_int8_onnx
+    from optimum.exporters.onnx.model_configs import BertOnnxConfig
 
-        eval_metric = metric.compute()
-        logger.info(f"eval_metric: {eval_metric}")
+    opset = 13
+    onnx_config = BertOnnxConfig(config=config,task="sequence-classification")
+    dynamic_axes = {name: axes for name, axes in chain(onnx_config.inputs.items(), onnx_config.outputs.items())}
+    inputs = onnx_config.generate_dummy_inputs(framework="pt")
+    
+    torch_to_int8_onnx(
+        fp32_model=compression_manager.fp32_model.model.to("cpu"),
+        int8_model=model.to("cpu"),
+        q_config=compression_manager.model.q_config,
+        save_path="quantize_model.onnx",
+        example_inputs=inputs,
+        opset_version=opset,
+        dynamic_axes=dynamic_axes,
+        input_names=list(onnx_config.inputs.keys()),
+        output_names=list(onnx_config.outputs.keys()),
+    )
 
-    if args.task_name == "mnli":
-        # Final evaluation on mismatched validation set
-        eval_dataset = processed_datasets["validation_mismatched"]
-        eval_dataloader = DataLoader(
-            eval_dataset, collate_fn=data_collator, batch_size=args.batch_size, drop_last=True
-        )
-        model.eval()
-        model_device = next(model.parameters()).device
-        for step, batch in enumerate(eval_dataloader):
-            batch = move_input_to_device(batch, model_device)
-            outputs = model(**batch)
-            predictions = outputs['logits'].argmax(dim=-1)
-            pred, gt = gather_results(predictions, batch["labels"])
-            metric.add_batch(predictions=pred, references=gt)
 
-        eval_metric = metric.compute()
-        logger.info(f"mnli-mm: {eval_metric}")
+
+    # if args.do_eval:
+    #     eval_dataloader = tqdm(eval_dataloader, desc="Evaluating")
+    #     model.eval()
+    #     model_device = next(model.parameters()).device
+    #     for step, batch in enumerate(eval_dataloader):
+    #         batch = move_input_to_device(batch, model_device)
+    #         outputs = model(**batch)
+    #         predictions = outputs['logits'].argmax(dim=-1)
+    #         metric.add_batch(
+    #             predictions=predictions,
+    #             references=batch["labels"],
+    #         )
+
+    #     eval_metric = metric.compute()
+    #     logger.info(f"eval_metric: {eval_metric}")
+
 
 if __name__ == "__main__":
     rank, world = int(os.environ.get('PMI_RANK', -1)), int(os.environ.get('PMI_SIZE', 1))
