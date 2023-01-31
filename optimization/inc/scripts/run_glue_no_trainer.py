@@ -252,6 +252,7 @@ def train(args, model, train_dataloader, lr_scheduler, compression_manager, opti
             if completed_steps >= args.max_train_steps:
                 break
         compression_manager.callbacks.on_epoch_end()
+        
         best_score = evaluation(model, eval_dataloader, metric)
         is_best = best_score > best_prec
         best_prec = max(best_score, best_prec)
@@ -411,9 +412,11 @@ def main():
         preprocess_function, batched=True, remove_columns=raw_datasets["train"].column_names
     )
 
-    train_dataset = processed_datasets["train"].select(range(1000))
+    train_dataset = processed_datasets["train"]
+    # train_dataset = processed_datasets["train"].select(range(1000))
     eval_dataset = processed_datasets["validation_matched" if args.task_name == "mnli" else "validation"]
     # Log a few random samples from the training set:
+    print(f"Training lenght: {len(train_dataset)}")
     for index in random.sample(range(len(train_dataset)), 3):
         logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
@@ -549,7 +552,7 @@ def main():
     model = compression_manager.model
     train(args, model, train_dataloader, lr_scheduler, compression_manager, optimizer, eval_dataloader,
           metric)
-    compression_manager.callbacks.on_train_end()
+    compression_manager.callbacks.on_train_end()    
     model = model.model
 
     from itertools import chain
@@ -572,24 +575,6 @@ def main():
         input_names=list(onnx_config.inputs.keys()),
         output_names=list(onnx_config.outputs.keys()),
     )
-
-
-
-    # if args.do_eval:
-    #     eval_dataloader = tqdm(eval_dataloader, desc="Evaluating")
-    #     model.eval()
-    #     model_device = next(model.parameters()).device
-    #     for step, batch in enumerate(eval_dataloader):
-    #         batch = move_input_to_device(batch, model_device)
-    #         outputs = model(**batch)
-    #         predictions = outputs['logits'].argmax(dim=-1)
-    #         metric.add_batch(
-    #             predictions=predictions,
-    #             references=batch["labels"],
-    #         )
-
-    #     eval_metric = metric.compute()
-    #     logger.info(f"eval_metric: {eval_metric}")
 
 
 if __name__ == "__main__":
