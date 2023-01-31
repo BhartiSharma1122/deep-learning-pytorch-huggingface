@@ -12,9 +12,15 @@ python scripts/run_glue.py \
     --teacher_model_name_or_path yoshitomo-matsubara/bert-base-uncased-sst2  \
     --apply_quantization \
     --quantization_approach aware_training \
-    --num_train_epochs 9 \
+    --num_train_epochs 4 \
+    --per_device_train_batch_size 32 \
     --do_train \
     --do_eval \
     --verify_loading \
     --output_dir /tmp/sst2_output
+```
+
+```bash
+# install intel/neural-compressor from github
+pip install git+https://github.com/intel/neural-compressor.git
 ```
