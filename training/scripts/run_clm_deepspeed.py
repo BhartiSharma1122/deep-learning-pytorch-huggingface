@@ -77,10 +77,8 @@ def training_function(args):
         logging_dir=f"{output_dir}/logs",
         logging_strategy="steps",
         logging_steps=200,
-        evaluation_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=2,
-        load_best_model_at_end=True,
         # push to hub parameters
         report_to="tensorboard",
         push_to_hub=True if args.repository_id else False,
