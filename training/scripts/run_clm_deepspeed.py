@@ -27,7 +27,6 @@ def parse_arge():
     # add training hyperparameters for epochs, batch size, learning rate, and seed
     parser.add_argument("--epochs", type=int, default=3, help="Number of epochs to train for.")
     parser.add_argument("--per_device_train_batch_size", type=int, default=8, help="Batch size to use for training.")
-    parser.add_argument("--per_device_eval_batch_size", type=int, default=8, help="Batch size to use for testing.")
     parser.add_argument("--lr", type=float, default=3e-3, help="Learning rate to use for training.")
     parser.add_argument("--seed", type=int, default=42, help="Seed to use for training.")
     parser.add_argument("--deepspeed", type=str, default=None, help="Path to deepspeed config file.")
@@ -67,16 +66,15 @@ def training_function(args):
     training_args = TrainingArguments(
         output_dir=output_dir,
         per_device_train_batch_size=args.per_device_train_batch_size,
-        per_device_eval_batch_size=args.per_device_eval_batch_size,
         bf16=args.bf16,  # Use BF16 if available
         learning_rate=args.lr,
         num_train_epochs=args.epochs,
         deepspeed=args.deepspeed,
         gradient_checkpointing=args.gradient_checkpointing,
-        # logging & evaluation strategies
+        # logging strategies
         logging_dir=f"{output_dir}/logs",
         logging_strategy="steps",
-        logging_steps=200,
+        logging_steps=50,
         save_strategy="epoch",
         save_total_limit=2,
         # push to hub parameters

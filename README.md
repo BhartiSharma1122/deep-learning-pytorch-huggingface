@@ -27,3 +27,6 @@ echo 'export PATH="${HOME}/.local/bin:$PATH"' >> ${HOME}/.bashrc
 ```bash
 watch -n0.1 nvidia-smi
 ```
+
+1e6 21103MiB
+1e12 22511MiB
